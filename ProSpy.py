@@ -2,7 +2,6 @@ import asyncio
 from pyrogram import Client, filters, errors
 from pyrogram.types import (ReplyKeyboardMarkup, KeyboardButton, 
                             InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove)
-
 # --- زانیارییەکان (API نوێ بەکاربهێنیت باشترە) ---
 API_ID = 38225812
 API_HASH = "aff3c308c587f18a5975910fbcf68366"
